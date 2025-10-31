@@ -17,6 +17,11 @@ export default function Login() {
   const handleSignup = async (e, options) => {
     e?.preventDefault();
 
+    if (!supabase) {
+      toast.error("Authentication is not configured");
+      return;
+    }
+
     setIsLoading(true);
 
     try {

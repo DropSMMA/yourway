@@ -18,6 +18,8 @@ const ButtonAccount = () => {
 	const [user, setUser] = useState(null);
 
 	useEffect(() => {
+		if (!supabase) return;
+
 		const getUser = async () => {
 			const {
 				data: { user },
@@ -30,7 +32,9 @@ const ButtonAccount = () => {
 	}, [supabase]);
 
 	const handleSignOut = async () => {
-		await supabase.auth.signOut();
+		if (supabase) {
+			await supabase.auth.signOut();
+		}
 		window.location.href = "/";
 	};
 

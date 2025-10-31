@@ -19,6 +19,8 @@ const CrispChat = () => {
   useEffect(() => {
     const getUser = async () => {
       const supabase = createClient();
+      if (!supabase) return;
+
       const {
         data: { user },
       } = await supabase.auth.getUser();

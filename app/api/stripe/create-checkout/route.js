@@ -31,17 +31,29 @@ export async function POST(req) {
   try {
     const supabase = await createClient();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    let user = null;
+    let profileData = null;
+
+    // If Supabase is configured, try to get user and profile data
+    if (supabase) {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+
+      user = authUser;
+
+      if (user) {
+        const { data } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user?.id)
+          .single();
+
+        profileData = data;
+      }
+    }
 
     const { priceId, mode, successUrl, cancelUrl } = body;
-
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user?.id)
-      .single();
 
     const stripeSessionURL = await createCheckout({
       priceId,
@@ -51,9 +63,9 @@ export async function POST(req) {
       // If user is logged in, it will pass the user ID to the Stripe Session so it can be retrieved in the webhook later
       clientReferenceId: user?.id,
       user: {
-        email: data?.email,
+        email: profileData?.email,
         // If the user has already purchased, it will automatically prefill it's credit card
-        customerId: data?.customer_id,
+        customerId: profileData?.customer_id,
       },
       // If you send coupons from the frontend, you can pass it here
       // couponId: body.couponId,

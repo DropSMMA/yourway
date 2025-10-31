@@ -32,14 +32,17 @@ export async function POST(req) {
 
   // Create a private supabase client using the secret service_role API key
   // Disable realtime to reduce Edge Runtime warnings
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: { persistSession: false },
-      realtime: { disabled: true }
-    }
-  );
+  // Supabase is optional - only create client if keys are provided
+  const supabase = (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
+    ? createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        {
+          auth: { persistSession: false },
+          realtime: { disabled: true }
+        }
+      )
+    : null;
 
   // verify Stripe event is legit
   try {
@@ -69,71 +72,74 @@ export async function POST(req) {
 
         if (!plan) break;
 
-        let user;
-        if (!userId) {
-          // check if user already exists
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("email", customer.email)
-            .single();
-          if (profile) {
-            user = profile;
-          } else {
-            // create a new user using supabase auth admin
-            const { data, error: authError } = await supabase.auth.admin.createUser({
-              email: customer.email,
-            });
+        // Only process Supabase operations if Supabase is configured
+        if (supabase) {
+          let user;
+          if (!userId) {
+            // check if user already exists
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("email", customer.email)
+              .single();
+            if (profile) {
+              user = profile;
+            } else {
+              // create a new user using supabase auth admin
+              const { data, error: authError } = await supabase.auth.admin.createUser({
+                email: customer.email,
+              });
 
-            if (authError) {
-              console.error("Failed to create auth user:", authError);
-              throw authError;
-            }
+              if (authError) {
+                console.error("Failed to create auth user:", authError);
+                throw authError;
+              }
 
-            user = data?.user;            
-            if (user?.id) {
-              await new Promise(resolve => setTimeout(resolve, 100));
-              
-              const { data: existingProfile } = await supabase
-                .from("profiles")
-                .select("*")
-                .eq("id", user.id)
-                .single();
-              
-              if (existingProfile) {
-                user = existingProfile;
+              user = data?.user;            
+              if (user?.id) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                const { data: existingProfile } = await supabase
+                  .from("profiles")
+                  .select("*")
+                  .eq("id", user.id)
+                  .single();
+                
+                if (existingProfile) {
+                  user = existingProfile;
+                }
               }
             }
+          } else {
+            // find user by ID
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", userId)
+              .single();
+
+            user = profile;
           }
-        } else {
-          // find user by ID
-          const { data: profile } = await supabase
+
+          if (!user?.id) {
+            console.error("User ID is null, cannot create/update profile");
+            throw new Error("User ID is required for profile creation");
+          }
+
+          const { error } = await supabase
             .from("profiles")
-            .select("*")
-            .eq("id", userId)
-            .single();
+            .upsert({
+              id: user.id,
+              email: customer.email,
+              customer_id: customerId,
+              price_id: priceId,
+              has_access: true,
+            });
 
-          user = profile;
-        }
-
-        if (!user?.id) {
-          console.error("User ID is null, cannot create/update profile");
-          throw new Error("User ID is required for profile creation");
-        }
-
-        const { error } = await supabase
-          .from("profiles")
-          .upsert({
-            id: user.id,
-            email: customer.email,
-            customer_id: customerId,
-            price_id: priceId,
-            has_access: true,
-          });
-
-        if (error) {
-          console.error("Failed to upsert profile:", error);
-          throw error;
+          if (error) {
+            console.error("Failed to upsert profile:", error);
+            throw error;
+          }
         }
 
         // Extra: send email with user link, product page, etc...
@@ -162,41 +168,44 @@ export async function POST(req) {
       case "customer.subscription.deleted": {
         // The customer subscription stopped
         // ❌ Revoke access to the product
-        const stripeObject = event.data.object;
-        const subscription = await stripe.subscriptions.retrieve(
-          stripeObject.id
-        );
+        if (supabase) {
+          const stripeObject = event.data.object;
+          const subscription = await stripe.subscriptions.retrieve(
+            stripeObject.id
+          );
 
-        await supabase
-          .from("profiles")
-          .update({ has_access: false })
-          .eq("customer_id", subscription.customer);
+          await supabase
+            .from("profiles")
+            .update({ has_access: false })
+            .eq("customer_id", subscription.customer);
+        }
         break;
       }
 
       case "invoice.paid": {
         // Customer just paid an invoice (for instance, a recurring payment for a subscription)
         // ✅ Grant access to the product
-        const stripeObject = event.data.object;
-        const priceId = stripeObject.lines.data[0].price.id;
-        const customerId = stripeObject.customer;
+        if (supabase) {
+          const stripeObject = event.data.object;
+          const priceId = stripeObject.lines.data[0].price.id;
+          const customerId = stripeObject.customer;
 
-        // Find profile where customer_id equals the customerId (in table called 'profiles')
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("customer_id", customerId)
-          .single();
+          // Find profile where customer_id equals the customerId (in table called 'profiles')
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("customer_id", customerId)
+            .single();
 
-        // Make sure the invoice is for the same plan (priceId) the user subscribed to
-        if (profile.price_id !== priceId) break;
+          // Make sure the invoice is for the same plan (priceId) the user subscribed to
+          if (profile?.price_id !== priceId) break;
 
-        // Grant the profile access to your product. It's a boolean in the database, but could be a number of credits, etc...
-        await supabase
-          .from("profiles")
-          .update({ has_access: true })
-          .eq("customer_id", customerId);
-
+          // Grant the profile access to your product. It's a boolean in the database, but could be a number of credits, etc...
+          await supabase
+            .from("profiles")
+            .update({ has_access: true })
+            .eq("customer_id", customerId);
+        }
         break;
       }
 

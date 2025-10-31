@@ -6,6 +6,14 @@ export async function POST(req) {
   try {
     const supabase = await createClient();
 
+    // Supabase is optional - return error if not configured but required for this endpoint
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "Authentication is not configured" },
+        { status: 503 }
+      );
+    }
+
     const body = await req.json();
 
     const {

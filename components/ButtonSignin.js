@@ -14,6 +14,8 @@ const ButtonSignin = ({ text = "Get started", extraStyle }) => {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
+    if (!supabase) return;
+
     const getUser = async () => {
       const {
         data: { user },

@@ -10,6 +10,11 @@ import config from "@/config";
 export default async function LayoutPrivate({ children }) {
   const supabase = await createClient();
 
+  // If Supabase is not configured, allow access (skip auth check)
+  if (!supabase) {
+    return <>{children}</>;
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();

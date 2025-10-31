@@ -12,6 +12,13 @@ export async function updateSession(request) {
     });
   }
 
+  // Supabase keys are optional - skip auth refresh if not configured
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return NextResponse.next({
+      request,
+    });
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });

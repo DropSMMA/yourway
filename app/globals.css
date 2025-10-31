@@ -41,6 +41,38 @@
     50% { transform: scale(1.1); opacity: 1; }
     100% { transform: scale(1); opacity: 1; }
   }
+
+  @keyframes scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  @keyframes scrollLeft {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  --animate-scroll: scroll 30s linear infinite;
+  --animate-scroll-left: scrollLeft 30s linear infinite;
+}
+
+.logo-scroll-container {
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.logo-scroll-content {
+  display: flex;
+  gap: 3rem;
+  width: fit-content;
+  animation: scrollLeft 30s linear infinite;
+}
+
+@media (min-width: 1024px) {
+  .logo-scroll-content {
+    gap: 4rem;
+  }
 }
 
 html,
